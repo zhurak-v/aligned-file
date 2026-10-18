@@ -1,102 +1,76 @@
-use std::io;
-use std::fs::File;
-use std::path::PathBuf;
+use std::cmp::Ordering;
 
 use crate::core::models::alignment::alignment::Alignment;
+use crate::core::models::collection::queue::tree_queue::TreeQueue;
+use crate::core::models::comparator::comparator::Comparator;
+use crate::core::models::version::version::Version;
 
 pub struct AlignedFile {
-    path_buf: PathBuf,
-    header: AlignedFileHeader,
-    metadata: AlignedFileMetadata,
-    data: AlignedFileData,
+    header: Header,
 }
 
 impl AlignedFile {
-    fn create_files(path_buf: &PathBuf) -> io::Result<(File, File)> {
-        let data_file: File = File::create(path_buf)?;
-        let metadata_path: PathBuf = PathBuf::from(format!(
-            "{}.metadata",
-            path_buf.to_string_lossy()
-        ));
-        let metadata_file: File = File::create(metadata_path)?;
-
-        Ok((data_file, metadata_file))
+    pub fn new(
+        alignment: Alignment,
+        offsets_count: u32
+    ) -> AlignedFile {
+        let header: Header = Header::new(alignment, offsets_count);
+        AlignedFile { header }
     }
 }
 
-impl AlignedFile {
-    pub fn create(path_buf: PathBuf, alignment: Alignment) -> AlignedFile {
-        let header: AlignedFileHeader = AlignedFileHeader::new(alignment);
-        let metadata: AlignedFileMetadata = AlignedFileMetadata::new();
-        let data: AlignedFileData = AlignedFileData::new();
+pub struct Header {
+    magic: [u8; 8],
+    version: Version,
+    alignment: Alignment,
+    offsets_count: u32,
+    offsets: TreeQueue<u64>,
+}
 
-        let files: (File, File) = AlignedFile::create_files(&path_buf).unwrap();
+impl Header {
+    const MAGIC: [u8; 8] = *b"zhurak-v";
+    const VERSION: Version = Version::new(1, 0, 0);
+}
 
-        AlignedFile {
-            path_buf,
-            header,
-            metadata,
-            data,
+impl Header {
+    pub fn new(
+        alignment: Alignment,
+        offsets_count: u32,
+    ) -> Header {
+        let comparator: OffsetComparator = OffsetComparator::new(alignment);
+        Header {
+            magic: Header::MAGIC,
+            version: Header::VERSION,
+            alignment,
+            offsets_count,
+            offsets: TreeQueue::new(comparator),
         }
     }
 }
 
-pub struct AlignedFileHeader {
-    magic: [u8; 8],
-    version: u32,
+struct OffsetComparator {
     alignment: Alignment,
 }
 
-impl AlignedFileHeader {
-    pub const MAGIC: [u8; 8] = *b"zhurak-v";
-    pub const VERSION: u32 = 1;
-
-    pub fn new(alignment: Alignment) -> AlignedFileHeader {
-        AlignedFileHeader {
-            magic: AlignedFileHeader::MAGIC,
-            version: AlignedFileHeader::VERSION,
-            alignment,
-        }
+impl OffsetComparator {
+    #[inline]
+    pub const fn new(alignment: Alignment) -> OffsetComparator {
+        OffsetComparator { alignment }
     }
 }
 
-pub struct AlignedFileMetadata {
-    free_blocks: FreeBlocks,
-}
+impl Comparator<u64> for OffsetComparator {
+    #[inline]
+    fn compare(&self, a: &u64, b: &u64) -> Ordering {
+        let distance_a: u64 = Alignment::round_up(
+            *a as usize,
+            (*self).alignment
+        ) as u64 - a;
+        let distance_b: u64 = Alignment::round_up(
+            *b as usize,
+            (*self).alignment
+        ) as u64 - b;
 
-impl AlignedFileMetadata {
-    pub fn new() -> AlignedFileMetadata {
-        AlignedFileMetadata {
-            free_blocks: FreeBlocks::new(),
-        }
-    }
-}
-
-pub struct FreeBlocks {
-    blocks: Vec<AlignedFileBlock>,
-}
-
-impl FreeBlocks {
-    pub fn new() -> FreeBlocks {
-        FreeBlocks {
-            blocks: Vec::new(),
-        }
-    }
-
-    pub fn count(&self) -> usize {
-        (*self).blocks.len()
-    }
-}
-
-pub struct AlignedFileBlock {
-    offset: usize,
-    length: usize,
-}
-
-pub struct AlignedFileData;
-
-impl AlignedFileData {
-    pub fn new() -> AlignedFileData {
-        AlignedFileData
+        distance_b.cmp(&distance_a)
     }
 }

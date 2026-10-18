@@ -25,7 +25,7 @@ impl Alignment {
         let align: usize = alignment.as_usize();
         (value + align - 1) & !(align - 1)
     }
-
+    
     #[inline]
     pub const fn round_down(value: usize, alignment: Alignment) -> usize {
         let align: usize = alignment.as_usize();
@@ -37,6 +37,11 @@ impl Alignment {
     #[inline]
     pub const fn as_usize(self) -> usize {
         self as usize
+    }
+
+    #[inline]
+    pub const fn as_u64(self) -> u64 {
+        self as u64
     }
 
     #[inline]
